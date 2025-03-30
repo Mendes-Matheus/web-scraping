@@ -26,6 +26,10 @@ public class WebScraper {
     // Logger para registrar informações e erros
     private static final Logger LOGGER = Logger.getLogger(WebScraper.class.getName());
 
+    // Constantes para os tamanhos de buffer e tempo de timeout
+    private static final int BUFFER_SIZE = 1024;  // Tamanho do buffer (1 KB)
+    private static final int TIMEOUT = 30 * 1000;  // Timeout de 30 segundos
+
     public static void main(String[] args) {
         // Cria o diretório de download caso ele não exista
         createDownloadFolder();
@@ -34,7 +38,7 @@ public class WebScraper {
             // Conexão com a página alvo e leitura do conteúdo HTML
             Document doc = Jsoup.connect(TARGET_URL)
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
-                    .timeout(10 * 1000)  // Timeout de 10 segundos
+                    .timeout(TIMEOUT)
                     .get();
 
             // Seleciona todos os links que terminam com .pdf
@@ -46,9 +50,7 @@ public class WebScraper {
                 // Verifica se o link é um dos arquivos "anexo i" ou "anexo ii"
                 if (url.toLowerCase().matches(".*anexo[_\\s]*i.*\\.pdf") || url.toLowerCase().matches(".*anexo[_\\s]*ii.*\\.pdf")) {
                     // Se for um arquivo válido, tenta fazer o download
-                    if (downloadFileWithProgress(url)) {
-                        LOGGER.info("Download concluído.");
-                    }
+                    downloadFileWithProgress(url);
                 }
             }
 
@@ -58,7 +60,7 @@ public class WebScraper {
         }
 
         // Compacta os arquivos PDF
-        compactarArquivos();
+        compressFiles();
     }
 
     /**
@@ -90,7 +92,7 @@ public class WebScraper {
 
             // Verifica se o arquivo já existe
             if (file.exists()) {
-                System.out.println("Arquivo já baixado: " + fileName);
+                LOGGER.info("Arquivo já baixado: " + fileName);
                 return false;  // Se o arquivo já foi baixado, não faz o download novamente
             }
 
@@ -110,12 +112,16 @@ public class WebScraper {
             try (InputStream in = connection.getInputStream();
                  FileOutputStream out = new FileOutputStream(file)) {
 
-                byte[] buffer = new byte[1024]; // Buffer de 1 KB para leitura do arquivo
+                byte[] buffer = new byte[BUFFER_SIZE]; // Buffer de 1 KB para leitura do arquivo
                 int bytesRead;
                 long totalBytesRead = 0;
                 long startTime = System.currentTimeMillis();
 
                 // Enquanto houver dados a serem lidos
+                // Esse trecho de código realiza a leitura do arquivo em partes (buffer),
+                // escreve essas partes em um arquivo de destino e calcula o progresso do download
+                // e a velocidade em tempo real. O progresso é exibido no terminal a cada iteração do loop,
+                // proporcionando uma visão contínua da execução do download.
                 while ((bytesRead = in.read(buffer)) != -1) {
                     out.write(buffer, 0, bytesRead);  // Escreve os dados no arquivo
                     totalBytesRead += bytesRead;
@@ -133,7 +139,7 @@ public class WebScraper {
             }
 
             // Exibe a mensagem final de conclusão do download
-            System.out.println("\nDownload finalizado: " + fileName);
+            LOGGER.info("Download finalizado: " + fileName);
             return true;  // Arquivo foi baixado com sucesso
         } catch (IOException e) {
             // Em caso de erro no download, registra o erro
@@ -145,13 +151,11 @@ public class WebScraper {
     /**
      * Compacta os arquivos PDF baixados no diretório de downloads em um único arquivo ZIP.
      */
-    private static void compactarArquivos() {
+    private static void compressFiles() {
         File zipFile = new File(ZIP_FILE_NAME);  // Arquivo ZIP onde os PDFs serão compactados
         File folder = new File(DOWNLOAD_DIR);    // Diretório onde os PDFs estão armazenados
-        // Lista todos os arquivos PDF no diretório de downloads
         File[] files = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
 
-        // Verifica se não há arquivos PDF para compactar
         if (files == null || files.length == 0) {
             LOGGER.warning("Nenhum arquivo PDF encontrado para compactação.");
             return;
@@ -160,29 +164,24 @@ public class WebScraper {
         try (FileOutputStream fos = new FileOutputStream(zipFile);
              ZipOutputStream zos = new ZipOutputStream(fos)) {
 
-            // Para cada arquivo PDF encontrado, adiciona-o ao arquivo ZIP
             for (File file : files) {
                 try (FileInputStream fis = new FileInputStream(file)) {
-                    // Cria uma nova entrada no arquivo ZIP com o nome do arquivo
                     ZipEntry zipEntry = new ZipEntry(file.getName());
                     zos.putNextEntry(zipEntry);
 
-                    byte[] buffer = new byte[1024];  // Buffer de 1 KB para leitura do arquivo
+                    byte[] buffer = new byte[BUFFER_SIZE];
                     int bytesRead;
-                    // Lê o arquivo PDF e escreve no arquivo ZIP
                     while ((bytesRead = fis.read(buffer)) != -1) {
                         zos.write(buffer, 0, bytesRead);
                     }
 
-                    zos.closeEntry();  // Fecha a entrada no arquivo ZIP
+                    zos.closeEntry();
                     LOGGER.info("Arquivo compactado: " + file.getName());
                 }
             }
 
-            // Finaliza o processo de compactação e informa o sucesso
             LOGGER.info("Compactação concluída. Arquivo criado: " + ZIP_FILE_NAME);
         } catch (IOException e) {
-            // Caso haja erro ao compactar os arquivos, registra o erro
             LOGGER.log(Level.SEVERE, "Erro ao compactar arquivos", e);
         }
     }
