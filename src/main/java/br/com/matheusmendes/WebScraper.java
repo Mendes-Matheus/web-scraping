@@ -10,6 +10,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public class WebScraper {
     // URL alvo de onde os arquivos serão baixados
@@ -18,11 +20,14 @@ public class WebScraper {
     // Diretório onde os arquivos serão armazenados
     private static final String DOWNLOAD_DIR = "downloads";
 
+    // Nome do arquivo ZIP onde os arquivos PDF serão compactados
+    private static final String ZIP_FILE_NAME = "downloads/anexos.zip";
+
     // Logger para registrar informações e erros
     private static final Logger LOGGER = Logger.getLogger(WebScraper.class.getName());
 
     public static void main(String[] args) {
-        // Cria o diretório de download se não existir
+        // Cria o diretório de download caso ele não exista
         createDownloadFolder();
 
         try {
@@ -51,6 +56,9 @@ public class WebScraper {
             // Caso haja erro ao processar a página, registra o erro
             LOGGER.log(Level.SEVERE, "Erro ao processar a página", e);
         }
+
+        // Compacta os arquivos PDF
+        compactarArquivos();
     }
 
     /**
@@ -131,6 +139,51 @@ public class WebScraper {
             // Em caso de erro no download, registra o erro
             LOGGER.log(Level.SEVERE, "Erro ao baixar arquivo: " + fileURL, e);
             return false;  // Falha no download
+        }
+    }
+
+    /**
+     * Compacta os arquivos PDF baixados no diretório de downloads em um único arquivo ZIP.
+     */
+    private static void compactarArquivos() {
+        File zipFile = new File(ZIP_FILE_NAME);  // Arquivo ZIP onde os PDFs serão compactados
+        File folder = new File(DOWNLOAD_DIR);    // Diretório onde os PDFs estão armazenados
+        // Lista todos os arquivos PDF no diretório de downloads
+        File[] files = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
+
+        // Verifica se não há arquivos PDF para compactar
+        if (files == null || files.length == 0) {
+            LOGGER.warning("Nenhum arquivo PDF encontrado para compactação.");
+            return;
+        }
+
+        try (FileOutputStream fos = new FileOutputStream(zipFile);
+             ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+            // Para cada arquivo PDF encontrado, adiciona-o ao arquivo ZIP
+            for (File file : files) {
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    // Cria uma nova entrada no arquivo ZIP com o nome do arquivo
+                    ZipEntry zipEntry = new ZipEntry(file.getName());
+                    zos.putNextEntry(zipEntry);
+
+                    byte[] buffer = new byte[1024];  // Buffer de 1 KB para leitura do arquivo
+                    int bytesRead;
+                    // Lê o arquivo PDF e escreve no arquivo ZIP
+                    while ((bytesRead = fis.read(buffer)) != -1) {
+                        zos.write(buffer, 0, bytesRead);
+                    }
+
+                    zos.closeEntry();  // Fecha a entrada no arquivo ZIP
+                    LOGGER.info("Arquivo compactado: " + file.getName());
+                }
+            }
+
+            // Finaliza o processo de compactação e informa o sucesso
+            LOGGER.info("Compactação concluída. Arquivo criado: " + ZIP_FILE_NAME);
+        } catch (IOException e) {
+            // Caso haja erro ao compactar os arquivos, registra o erro
+            LOGGER.log(Level.SEVERE, "Erro ao compactar arquivos", e);
         }
     }
 }
